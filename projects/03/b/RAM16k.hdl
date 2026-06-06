@@ -13,12 +13,16 @@ CHIP RAM16K {
     OUT out[16];
 
     PARTS:
-    DMux4Way(in=load, sel=address[0..1], a=load00, b=load01, c=load10, d=load11);
+    // Use demultiplexer (4-way) to select register to pass input to using 2 left MSBs (most-significant bits)
+    // Note that, unlike the other RAM chips, this one only selects from 4 different RAM4k chips rather than 8. This is why the DMux4Way only needs TWO bits for the address input
+    DMux4Way(in=load, sel=address[12..13], a=load00, b=load01, c=load10, d=load11);
 
-    RAM4K(in=in, load=load00, address=address[2..13], out=out00);
-    RAM4K(in=in, load=load01, address=address[2..13], out=out01);
-    RAM4K(in=in, load=load10, address=address[2..13], out=out10);
-    RAM4K(in=in, load=load11, address=address[2..13], out=out11);
+    // Assign demultiplexer output to appropriate address within register, using the 12 right LSBs (least-significant bits)
+    RAM4K(in=in, load=load00, address=address[0..11], out=out00);
+    RAM4K(in=in, load=load01, address=address[0..11], out=out01);
+    RAM4K(in=in, load=load10, address=address[0..11], out=out10);
+    RAM4K(in=in, load=load11, address=address[0..11], out=out11);
 
-    Mux4Way16(a=out00, b=out01, c=out10, d=out11, sel=address[0..1], out=out);
+    // Use multiplexer (8-way) to select address output to read from
+    Mux4Way16(a=out00, b=out01, c=out10, d=out11, sel=address[12..13], out=out);
  }
