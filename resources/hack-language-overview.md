@@ -132,6 +132,134 @@ It is identified by a leading **1** bit[^1], followed by a specific pattern of 1
 | `1` | `1` | `0` | `JLE`    | If *out* <= 0 jump        |
 | `1` | `1` | `1` | `JMP`    | Jump no matter what       |
 
+## Conventions
+
+### Symbols
+
+You can refer to memory locations (addresses) using either *constants* (i.e. `@20` for `RAM[20]`) or *symbols*.  Symbols are introduced into assembly programs in one of three ways:
+
+1. *Predefined symbols*: A special subset of RAM addresses can be referred to by any assembly program using the following predefined symbols:
+   - *Virtual registers*: To simplify things, the symbols `R0` to `R15` are predefined to refer to RAM addresses 0 to 15, respectively.
+   - *Predefined pointers*: The symbols `SP`, `LCL`, `ARG`, `THIS` and `THAT` are predefined to refer to RAM addresses 0 to 4, respectively. Note that each of these memory locations has *two* labels. I.e., RAM[2] can be referred to using either `R2` or `ARG`. This will come in handy when implementing virtual machines later.
+   - *I/O pointers*: The symbols `SCREEN` and `KBD` are predefined to refer to RAM addresses 16384 (0x4000) and 24576 (0x6000), respectively, which are the base addresses of the screen and keyboard memory maps. *See [[study-notes/hack machine language#Input/Output|Input/Output]] below.*
+2. *Label symbols*: These are user-defined symbols, which serve to label destinations of *goto* commands. They are declared by the pseudo-command `(Name)` or `(Xxx)` where "Name"/"Xxx" are replaced by the capitalized label name. A label can be defined only once and can be used anywhere in the assembly program, even before the line in which it is defined
+3. *Variable symbols*: Any user-defined symbol `Xxx` appearing in an assembly program that is not predefined and is not defined elsewhere using the `(Xxx)` command is treated as a *variable*, and is assigned a unique memory address by the assembler, starting at RAM address 16 (0x0010).
+
+### Input/Output
+
+The Hack computer connects to two peripherals: a screen (output) and a keyboard (input). These devices interact with the computer via *memory maps* which are synced via a continuous loop.
+
+#### Screen
+
+The Hack computer includes a black and white screen that is 256x512 pixels wide. That is, it holds 256 rows that have 512 pixels per row. The screen's pixels are represented by an 8K memory map that starts at `RAM[16384]`. Each row in the physical screen is represented in the RAM by 32 consecutive 16-bit words which start at the screen's top left corner.
+
+So, the following formula can map out which word (group of 16 bits) the pixel at row *r*, column *c* is at:
+
+`16384 + r * 32 + c//16` (here, the `//` symbol refers to dividing and tossing out the remainder. There's an actual operator for this but I can't remember the official name/symbol.)
+
+So, for example a pixel just off-center of the screen would be mapped out like so:
+row = 128
+column = 260
+
+16384 + (128 * 32) + (260 // 16)
+16384 + 4096 + (260 // 16)
+16384 + 4096 + 16 = `RAM[20496]`
+
+Then, you would calculate what `c%16 = x` is and, starting from LSB -> MSB (right to left) you would turn the `x`th bit from `0` to `1`.
+
+So, for the example above for the pixel at row 128 and column 260, you would perform the following calculation:
+
+260 % 16 = 4
+
+So, the word at `RAM[20496]` would be set to `0000000000001000`, or `8` in decimal.
+
+### Keyboard
+
+The physical keyboard interfaces with the Hack computer via a single-word memory map located at `RAM[24576]`. It only needs a single word because the Hack computer uses the 16-bit ASCII (pronounced "ask-E") code to represent the character being pressed. When no key is pressed, the code 0 appears in this location. In addition to the typical ASCII codes, the Hack computer recognizes the following key codes:
+
+| Key pressed | Code |
+| :---------- | ---: |
+| newline     |  128 |
+| backspace   |  129 |
+| left arrow  |  130 |
+| up arrow    |  131 |
+| right arrow |  132 |
+| down arrow  |  133 |
+| home        |  134 |
+| end         |  135 |
+| page up     |  136 |
+| page down   |  137 |
+| insert      |  138 |
+| delete      |  139 |
+| escape      |  140 |
+| f1          |  141 |
+| f2          |  142 |
+| f3          |  143 |
+| f4          |  144 |
+| f5          |  145 |
+| f6          |  146 |
+| f7          |  147 |
+| f8          |  148 |
+| f9          |  149 |
+| f10         |  150 |
+| f11         |  151 |
+| f12         |  152 |
+
+### File Conventions
+
+#### File Formatting
+
+Assembly language files are stored in text files with an `asm` extension and always begin with a capital letter (by convention). For example, `Prog.asm`, `Fill.asm`, or `Add.asm`.
+
+#### File Contents
+
+Each file is composed of lines of text which contain either an *instruction* or a *symbol declaration*.
+
+**Instructions**: lines with either [[study-notes/hack machine language#A-Instruction (Address Instruction)|A-instructions]] or [[study-notes/hack machine language#C-Instruction (Compute Instruction)|C-instructions]].
+
+**(Symbol) declaration**: symbol declaration pseudo-commands are written as `(Name)` with the symbol's name in parenthesis followed by the program command that will be stored within that symbol. This is called a `pseudo-command` since it does not generate any machine code.
+
+#### Constants and Symbols
+
+*Constants* must be non-negative and are always written in decimal notation. A user-defined *symbol* can be any sequence of letters, digits, underscore (`_`), dot (`.`),  dollar sign (`$`), and colon (`:`) that doesn't begin with a digit.
+
+By convention, use UPPERCASE for symbols and lowercase for variable names.
+
+#### Comments
+
+Text beginning with two slashes (`//`) and ending at the end of the line is considered a comment by the assembler and is ignored.
+
+#### White Space
+
+Space characters and empty lines are also ignored by the assembler.
+
+#### Case Conventions
+
+All the assembly mnemonics must be written in uppercase. User-defined labels and variables, however, are case-sensitive. As noted above, LABELS should be uppercase and variables should be lowercase.
+
+## Usage Notes
+
+### Conflicting Use of the A Register
+
+The A-register can be used to select either *data memory (RAM)* location for a subsequent C-instruction involving **M**, or an *instruction memory* location for a subsequent C-instruction involving a jump.
+
+To prevent conflicting use of the A register, in well-written programs a C-instruction that may cause a jump should **not contain a reference to M, and vice versa**.
+
+### Command memory addresses
+
+Machine languages all have their own conventions when it comes to the number of memory addresses that can appear in a single command. The Hack machine language could be described as a "1/2 address machine" in this respect. This is because this simple computer is a 16-bit computer; that is, it uses a 16-bit instruction format.
+
+Since there is no room to pack both an instruction code and a 15-bit address in the 16-bit instruction format (remember, the rightmost bit of the instruction codes is used to denote if the instruction is an *A-instruction* or a *C-instruction*), operations involving memory access will normally be specified in Hack using two instructions: an *A*-instruction to specify the address location and a *C*-instruction to specify the operation performed.[^3]
+
+### Macro Commands
+
+Because of the "1/2 address machine" feature described above, Hack assembly code typically ends up being an alternating sequence of *A-* and *C*-instructions. For example:
+
+`@xxx` followed by `D=D+M`
+`@yyy` followed by `0;JMP`
+
+Note that friendlier *macro commands* like `D=D+M[xxx]` or `GOTO YYY` (where `GOTO` is a symbol? #question) can make the language a bit less tedious.
+
 [^1]: actually, three leading `1` bits, since the second and third bits (from R->L) have no purpose in C-instructions, so, by convention, they are just set to `1`
 
 [^2]: well, 13 bits, since the first two of the 15 bits (from R --> L) are set to `1 1` by convention
